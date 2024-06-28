@@ -1,0 +1,4 @@
+application:
+  sd-url: http://localhost:7860/faceswaplab/swap_face
+  input-dir: ./input/
+  output-dir: ./output/
