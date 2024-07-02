@@ -1,5 +1,6 @@
 package com.example.fswap;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -29,9 +30,10 @@ public class MyRunner implements ApplicationRunner {
 
 	private static final Face sourceFace = Face.Sebastien;
 	private static final Integer sourceIndex = 0;
-	private static final Boolean sameGender = Boolean.FALSE;
-	private static final Boolean highQuality = Boolean.FALSE;
-	private static final Boolean sortBySize = Boolean.FALSE;
+	private static final Boolean sameGender = false;
+	private static final Boolean highQuality = true;
+	private static final Boolean sortBySize = false;
+	private static final Boolean removeOriginal = true;
 
 	private final RestTemplate restTemplate = new RestTemplate();
 
@@ -60,7 +62,13 @@ public class MyRunner implements ApplicationRunner {
 			final var encodedFile = encode(path);
 			final var fSwapRequest = createFSwapRequest(encodedFile);
 			final var fSwapResponse = restTemplate.postForObject(url, fSwapRequest, FSwapResponse.class);
-			fSwapResponse.getImages().forEach(image -> saveImage(path, image));
+			fSwapResponse.getImages().forEach(image -> {
+				saveImage(path, image);
+
+				if (removeOriginal) {
+					delete(path);
+				}
+			});
 		});
 
 		stopwatch.stop();
@@ -82,6 +90,15 @@ public class MyRunner implements ApplicationRunner {
 					.build())
 				.build())
 			.build();
+	}
+
+	private void delete(Path path) {
+		try {
+			Files.delete(path);
+		} catch (final IOException e) {
+			log.warn("Failed to delete file: {}", path);
+			throw new RuntimeException(e);
+		}
 	}
 
 	private String encode(Path path) {
