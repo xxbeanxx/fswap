@@ -1,0 +1,88 @@
+# podman build . --file containerfile --tag fswap
+#
+# podman run --name AUTOMATIC1111 \
+#   --detach --restart unless-stopped --publish 7860:7860 --userns=keep-id \
+#   --volume ./models/faces:/data/models/faceswaplab/faces \
+#   --volume ./output:/data/output \
+#   fswap
+
+FROM docker.io/fedora:40
+
+RUN useradd --uid 1000 AUTOMATIC1111
+RUN mkdir --parents /AUTOMATIC1111 /data && \
+    chown --recursive 1000:1000 /AUTOMATIC1111 /data
+
+RUN dnf install --assumeyes \
+      bc-1.07.1-21.fc40 \
+      gcc-c++-14.1.1-6.fc40 \
+      git-2.45.2-2.fc40 \
+      gperftools-2.14-3.fc40 \
+      python3-pip-23.3.2-1.fc40 \
+      python3.10-3.10.14-2.fc40 \
+      python3.10-devel-3.10.14-2.fc40 \
+      rust-1.79.0-3.fc40 \
+      unzip-6.0-63.fc40 && \
+    dnf clean all
+
+USER AUTOMATIC1111
+WORKDIR /AUTOMATIC1111
+
+# fix some git submodule issues 🤷
+RUN git config --global --add safe.directory '*'
+
+# clone all the things
+RUN git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git ./ && \
+    git -C ./ checkout -b feee37d75f1b168768014e4634dcb156ee649c05 feee37d75f1b168768014e4634dcb156ee649c05 && \
+    git clone https://github.com/crowsonkb/k-diffusion.git ./repositories/k-diffusion && \
+    git -C ./repositories/k-diffusion checkout -b ab527a9a6d347f364e3d185ba6d714e22d80cb3c ab527a9a6d347f364e3d185ba6d714e22d80cb3c && \
+    git clone https://github.com/Stability-AI/generative-models.git ./repositories/generative-models && \
+    git -C ./repositories/generative-models checkout -b 45c443b316737a4ab6e40413d7794a7f5657c19f 45c443b316737a4ab6e40413d7794a7f5657c19f && \
+    git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui-assets.git ./repositories/stable-diffusion-webui-assets && \
+    git -C ./repositories/stable-diffusion-webui-assets checkout -b 6f7db241d2f8ba7457bac5ca9753331f0c266917 6f7db241d2f8ba7457bac5ca9753331f0c266917 && \
+    git clone https://github.com/salesforce/BLIP.git ./repositories/BLIP && \
+    git -C ./repositories/BLIP checkout -b 48211a1594f1321b00f14c9f7a5b4813144b2fb9 48211a1594f1321b00f14c9f7a5b4813144b2fb9 && \
+    git clone https://github.com/Stability-AI/stablediffusion.git ./repositories/stable-diffusion-stability-ai && \
+    git -C ./repositories/stable-diffusion-stability-ai checkout -b cf1d67a6fd5ea1aa600c4df58e5b47da45f6bdbf cf1d67a6fd5ea1aa600c4df58e5b47da45f6bdbf && \
+    git clone https://github.com/glucauze/sd-webui-faceswaplab ./extensions/sd-webui-faceswaplab && \
+    git -C ./extensions/sd-webui-faceswaplab checkout -b 42d1c75b68bb7fdb55e2b3753eda65189f82b56d 42d1c75b68bb7fdb55e2b3753eda65189f82b56d
+
+# set up python environment
+RUN python3.10 -m venv venv
+# install AUTOMATIC1111 requirements
+RUN ./venv/bin/pip install --no-cache-dir --prefer-binary --requirement requirements_versions.txt && \
+    ./venv/bin/pip install --no-cache-dir --prefer-binary https://github.com/openai/CLIP/archive/d50d76daa670286dd6cacf3bcd80b5e4823fc8e1.zip && \
+    ./venv/bin/pip install --no-cache-dir --prefer-binary https://github.com/mlfoundations/open_clip/archive/bb6e834e9c70d9c27d0dc3ecedeebeaeb1ffad6b.zip
+# install sd-webui-faceswaplab requirements
+RUN ./venv/bin/pip install --no-cache-dir --prefer-binary --requirement extensions/sd-webui-faceswaplab/requirements-gpu.txt && \
+    ./venv/bin/pip install --no-cache-dir --prefer-binary open-clip-torch==2.20.0
+# fix some broken versions 🤷
+RUN ./venv/bin/pip install --no-cache-dir --prefer-binary albumentations==1.4.3 && \
+    ./venv/bin/pip install --no-cache-dir --prefer-binary pydantic==1.10.17
+
+# set up /data directory
+RUN mv ./models /data && ln --symbolic /data/models ./models
+
+# pre-download required models
+RUN curl --location https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.safetensors \
+      --create-dirs --output ./models/Stable-diffusion/v1-5-pruned-emaonly.safetensors && \
+    curl --location https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth \
+      --create-dirs --output ./models/Codeformer/codeformer-v0.1.0.pth && \
+    curl --location https://github.com/xinntao/facexlib/releases/download/v0.1.0/detection_Resnet50_Final.pth \
+      --create-dirs --output ./models/GFPGAN/detection_Resnet50_Final.pth && \
+    curl --location https://github.com/xinntao/facexlib/releases/download/v0.2.2/parsing_parsenet.pth \
+      --create-dirs --output ./models/GFPGAN/parsing_parsenet.pth && \
+    curl --location https://huggingface.co/thebiglaskowski/inswapper_128.onnx/resolve/main/inswapper_128.onnx \
+      --create-dirs --output ./models/faceswaplab/inswapper_128.onnx && \
+    curl --location https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/parsing_parsenet.pth \
+      --create-dirs --output ./models/faceswaplab/parser/weights/facelib/parsing_parsenet.pth && \
+    curl --location https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip \
+      --create-dirs --output ./models/faceswaplab/analysers/models/buffalo_l.zip && \
+    unzip ./models/faceswaplab/analysers/models/buffalo_l.zip -d ./models/faceswaplab/analysers/models/buffalo_l && \
+    rm ./models/faceswaplab/analysers/models/buffalo_l.zip
+
+RUN mkdir --parents /data/output
+RUN echo '{ "auto_launch_browser": "Disable" }' > ./config.json && \
+    sed --in-place 's/#export COMMANDLINE_ARGS=""/export COMMANDLINE_ARGS="--skip-torch-cuda-test --precision full --no-half"/' webui-user.sh
+
+ENTRYPOINT ["./webui.sh"]
+EXPOSE 7860
