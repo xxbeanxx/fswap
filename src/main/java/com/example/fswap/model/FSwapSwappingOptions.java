@@ -20,6 +20,18 @@ public interface FSwapSwappingOptions {
 	//   },
 
 	@Default
+	@JsonProperty("codeformer_weight")
+	default String getCodeformerWeight() {
+		return "1";
+	}
+
+	@Default
+	@JsonProperty("restorer_visibility")
+	default String getRestorerVisibility() {
+		return "1";
+	}
+
+	@Default
 	@JsonProperty("improved_mask")
 	default Boolean getImprovedMask() {
 		return Boolean.FALSE;

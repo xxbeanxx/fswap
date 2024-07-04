@@ -28,12 +28,13 @@ public class MyRunner implements ApplicationRunner {
 
 	private static final Logger log = LoggerFactory.getLogger(MyRunner.class);
 
-	private static final Face sourceFace = Face.Sebastien;
+	private static final Face sourceFace = null; // TODO :: set me!
 	private static final Integer sourceIndex = 0;
 	private static final Boolean sameGender = false;
 	private static final Boolean highQuality = true;
 	private static final Boolean sortBySize = false;
 	private static final Boolean removeOriginal = true;
+	private static final String restorerVisibility = "1";
 
 	private final RestTemplate restTemplate = new RestTemplate();
 
@@ -64,10 +65,7 @@ public class MyRunner implements ApplicationRunner {
 			final var fSwapResponse = restTemplate.postForObject(url, fSwapRequest, FSwapResponse.class);
 			fSwapResponse.getImages().forEach(image -> {
 				saveImage(path, image);
-
-				if (removeOriginal) {
-					delete(path);
-				}
+				if (removeOriginal) { delete(path); }
 			});
 		});
 
@@ -86,6 +84,7 @@ public class MyRunner implements ApplicationRunner {
 				.getfSwapSwappingOptions(ImmutableFSwapSwappingOptions.builder()
 					.faceRestorerName(highQuality ? "CodeFormer" : "None")
 					.upscalerName(highQuality ? "Lanczos" : "None")
+					.restorerVisibility(restorerVisibility)
 					.improvedMask(highQuality)
 					.build())
 				.build())
