@@ -112,7 +112,8 @@ public class MyRunner implements ApplicationRunner {
 
 	private void saveImage(Path path, String image) {
 		try {
-			final var outputPath = Paths.get(outputDir, path.getFileName().toString());
+			final var fileName = removeFileExtension(path.getFileName().toString()) + ".png";
+			final var outputPath = Paths.get(outputDir, fileName);
 			Files.write(outputPath, Base64.getDecoder().decode(image));
 		}
 		catch (final Exception e) {
@@ -126,6 +127,10 @@ public class MyRunner implements ApplicationRunner {
 		final var minutes = TimeUnit.MILLISECONDS.toMinutes(milliseconds) % TimeUnit.HOURS.toMinutes(1);
 		final var seconds = TimeUnit.MILLISECONDS.toSeconds(milliseconds) % TimeUnit.MINUTES.toSeconds(1);
 		return String.format("%02d:%02d:%02d", hours, minutes, seconds);
+	}
+
+	private String removeFileExtension(String filename) {
+		return filename.replaceAll("(?<!^)[.][^.]*$", "");
 	}
 
 }
