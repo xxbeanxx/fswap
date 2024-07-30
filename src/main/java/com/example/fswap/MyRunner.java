@@ -4,7 +4,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -32,7 +35,7 @@ public class MyRunner implements ApplicationRunner {
 	private static final Integer sourceIndex = 0;
 	private static final Boolean sameGender = false;
 	private static final Boolean highQuality = true;
-	private static final Boolean sortBySize = false;
+	private static final Boolean sortBySize = true;
 	private static final Boolean removeOriginal = true;
 	private static final String restorerVisibility = "1";
 
@@ -57,14 +60,15 @@ public class MyRunner implements ApplicationRunner {
 		final var stopwatch = new StopWatch();
 
 		stopwatch.start();
+
 		Files.list(Paths.get(inputDir)).filter(Files::isRegularFile).sorted().forEach(path -> {
-			log.info("Processing file [{}/{}]: {}", currentFrame.incrementAndGet(), nFrames, path.getFileName());
+			log.info("Processing file [{}/{}]: {} using face [{}]", currentFrame.incrementAndGet(), nFrames, path.getFileName(), sourceFace);
 
 			final var encodedFile = encode(path);
-			final var fSwapRequest = createFSwapRequest(encodedFile);
+			final var fSwapRequest = createFSwapRequest(encodedFile, sourceFace);
 			final var fSwapResponse = restTemplate.postForObject(url, fSwapRequest, FSwapResponse.class);
 			fSwapResponse.getImages().forEach(image -> {
-				saveImage(path, image);
+				saveImage(sourceFace, path, image);
 				if (removeOriginal) { delete(path); }
 			});
 		});
@@ -73,19 +77,19 @@ public class MyRunner implements ApplicationRunner {
 		log.info("Finished... Elapsed time: {}", getFormattedTime(stopwatch.getTotalTimeMillis()));
 	}
 
-	private FSwapRequest createFSwapRequest(String image) {
+	private FSwapRequest createFSwapRequest(String image, Face face) {
 		return ImmutableFSwapRequest.builder()
 			.image(image)
 			.addFSwapUnits(ImmutableFSwapUnit.builder()
-				.sourceFace("%s.safetensors".formatted(sourceFace))
+				.sourceFace("%s.safetensors".formatted(face))
 				.addFacesIndex(sourceIndex)
 				.sameGender(sameGender)
 				.sortBySize(sortBySize)
 				.getfSwapSwappingOptions(ImmutableFSwapSwappingOptions.builder()
 					.faceRestorerName(highQuality ? "CodeFormer" : "None")
 					.upscalerName(highQuality ? "Lanczos" : "None")
-					.restorerVisibility(restorerVisibility)
 					.improvedMask(highQuality)
+					.restorerVisibility(restorerVisibility)
 					.build())
 				.build())
 			.build();
@@ -110,9 +114,9 @@ public class MyRunner implements ApplicationRunner {
 		}
 	}
 
-	private void saveImage(Path path, String image) {
+	private void saveImage(Face face, Path path, String image) {
 		try {
-			final var fileName = removeFileExtension(path.getFileName().toString()) + ".png";
+			final var fileName = face.name() + "-" + removeFileExtension(path.getFileName().toString()) + ".png";
 			final var outputPath = Paths.get(outputDir, fileName);
 			Files.write(outputPath, Base64.getDecoder().decode(image));
 		}
