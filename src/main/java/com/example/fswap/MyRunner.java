@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -28,11 +29,16 @@ public class MyRunner implements ApplicationRunner {
 
 	private static final Logger log = LoggerFactory.getLogger(MyRunner.class);
 
-	private static final Face sourceFace = null; // TODO :: set me!
+	private enum Quality { Super, High, Low }
+
+	private static final List<Face> sourceFaces = List.of(
+		/* TODO :: add a face! */
+	);
+
 	private static final Integer sourceIndex = 0;
 	private static final Boolean sameGender = false;
-	private static final Boolean highQuality = true;
-	private static final Boolean sortBySize = true;
+	private static final Quality quality = Quality.Super;
+	private static final Boolean sortBySize = false;
 	private static final Boolean removeOriginal = true;
 	private static final String restorerVisibility = "1";
 
@@ -52,22 +58,22 @@ public class MyRunner implements ApplicationRunner {
 		// Create output folder in case it doesn't exist
 		Files.createDirectories(Paths.get(outputDir));
 
-		final var nFrames = Files.list(Paths.get(inputDir)).filter(Files::isRegularFile).count();
-		final var currentFrame = new AtomicInteger();
+		final var nFiles = Files.list(Paths.get(inputDir)).filter(Files::isRegularFile).count() * sourceFaces.size();
+		final var currentFile = new AtomicInteger();
 		final var stopwatch = new StopWatch();
 
 		stopwatch.start();
 
 		Files.list(Paths.get(inputDir)).filter(Files::isRegularFile).sorted().forEach(path -> {
-			log.info("Processing file [{}/{}]: {} using face [{}]", currentFrame.incrementAndGet(), nFrames, path.getFileName(), sourceFace);
+			sourceFaces.forEach(sourceFace -> {
+				log.info("Processing file [{}/{}]: {} using face [{}]", currentFile.incrementAndGet(), nFiles, path.getFileName(), sourceFace);
 
-			final var encodedFile = encode(path);
-			final var fSwapRequest = createFSwapRequest(encodedFile, sourceFace);
-			final var fSwapResponse = restTemplate.postForObject(url, fSwapRequest, FSwapResponse.class);
-			fSwapResponse.getImages().forEach(image -> {
-				saveImage(sourceFace, path, image);
-				if (removeOriginal) { delete(path); }
+				final var fSwapRequest = createFSwapRequest(encode(path), sourceFace);
+				final var fSwapResponse = restTemplate.postForObject(url, fSwapRequest, FSwapResponse.class);
+				fSwapResponse.getImages().forEach(image -> saveImage(sourceFace, path, image));
 			});
+
+			if (removeOriginal) { delete(path); }
 		});
 
 		stopwatch.stop();
@@ -83,9 +89,9 @@ public class MyRunner implements ApplicationRunner {
 				.sameGender(sameGender)
 				.sortBySize(sortBySize)
 				.getfSwapSwappingOptions(ImmutableFSwapSwappingOptions.builder()
-					.faceRestorerName(highQuality ? "CodeFormer" : "None")
-					.upscalerName(highQuality ? "Lanczos" : "None")
-					.improvedMask(highQuality)
+					.faceRestorerName(getFaceRestorerName())
+					.upscalerName(getUpscalerName())
+					.improvedMask(getImprovedMask())
 					.restorerVisibility(restorerVisibility)
 					.build())
 				.build())
@@ -109,6 +115,30 @@ public class MyRunner implements ApplicationRunner {
 			log.warn("Failed to read file: {}", path);
 			throw new RuntimeException(e);
 		}
+	}
+
+	private String getFaceRestorerName() {
+		return switch (quality) {
+			case Quality.Super -> "CodeFormer";
+			case Quality.High -> "CodeFormer";
+			case Quality.Low -> "None";
+		};
+	}
+
+	private boolean getImprovedMask() {
+		return switch (quality) {
+			case Quality.Super -> true;
+			case Quality.High -> true;
+			case Quality.Low -> false;
+		};
+	}
+
+	private String getUpscalerName() {
+		return switch (quality) {
+			case Quality.Super -> "LDSR";
+			case Quality.High -> "Lanczos";
+			case Quality.Low -> "None";
+		};
 	}
 
 	private void saveImage(Face face, Path path, String image) {
